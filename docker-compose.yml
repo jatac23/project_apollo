@@ -1,0 +1,58 @@
+services:
+  apollo:
+    build: .
+    container_name: apollo-labeling-pipeline
+    environment:
+      # Google Cloud Configuration
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/service-account-key.json
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      
+      # BigQuery Configuration
+      - BIGQUERY_DATASET=${BIGQUERY_DATASET:-apollo_labels}
+      - BIGQUERY_LOCATION=${BIGQUERY_LOCATION:-US}
+      
+      # Pipeline Configuration
+      - MIN_ETH_BALANCE_WHALE=${MIN_ETH_BALANCE_WHALE:-1000.0}
+      - NFT_TRADER_THRESHOLD=${NFT_TRADER_THRESHOLD:-0.7}
+      - LOOKBACK_DAYS_NEW_WALLET=${LOOKBACK_DAYS_NEW_WALLET:-30}
+    
+    volumes:
+      # Mount credentials directory (create this directory and place your service account key here)
+      - ./credentials:/app/credentials:ro
+      # Mount output directory to persist results
+      - ./output:/app/output
+      # Mount .env file if you prefer file-based configuration
+      - ./.env:/app/.env:ro
+    
+    # Keep container running for interactive use
+    stdin_open: true
+    tty: true
+    
+    # Restart policy
+    restart: unless-stopped
+
+  # Development service with live code mounting
+  apollo-dev:
+    build: .
+    container_name: apollo-dev
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/service-account-key.json
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - BIGQUERY_DATASET=${BIGQUERY_DATASET:-apollo_labels}
+      - BIGQUERY_LOCATION=${BIGQUERY_LOCATION:-US}
+      - MIN_ETH_BALANCE_WHALE=${MIN_ETH_BALANCE_WHALE:-1000.0}
+      - NFT_TRADER_THRESHOLD=${NFT_TRADER_THRESHOLD:-0.7}
+      - LOOKBACK_DAYS_NEW_WALLET=${LOOKBACK_DAYS_NEW_WALLET:-30}
+    
+    volumes:
+      # Mount source code for development (live reloading)
+      - .:/app
+      - ./credentials:/app/credentials:ro
+      - ./output:/app/output
+    
+    # Override command to keep container running for development
+    command: sleep infinity
+    
+    # Keep container running
+    stdin_open: true
+    tty: true

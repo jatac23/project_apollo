@@ -35,14 +35,40 @@ The pipeline follows a modular, incremental design inspired by modern data engin
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### Option 1: Docker (Recommended for Easy Setup)
 
+**Prerequisites:**
+- Docker and Docker Compose
+- Google Cloud Project with BigQuery API enabled
+- Service account with BigQuery access
+
+**Quick Setup:**
+```bash
+git clone <repository-url>
+cd project_apollo
+
+# Setup credentials
+mkdir credentials
+# Place your Google Cloud service account key as credentials/service-account-key.json
+
+# Configure environment
+cp env.example .env
+# Edit .env with your Google Cloud project ID
+
+# Run the pipeline
+./docker-run.sh run
+```
+
+📖 **For detailed Docker instructions, see [README-Docker.md](README-Docker.md)**
+
+### Option 2: Local Python Installation
+
+**Prerequisites:**
 - Python 3.8+
 - Google Cloud Project with BigQuery API enabled
 - Service account with BigQuery access
 
-### Installation
-
+**Installation:**
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
@@ -59,7 +85,7 @@ The pipeline follows a modular, incremental design inspired by modern data engin
    **Option A: Using .env file (Recommended)**
    ```bash
    # Copy the template and edit with your values
-   cp .env.example .env
+   cp env.example .env
    # Edit .env with your Google Cloud credentials
    ```
    
@@ -265,7 +291,7 @@ This is a take-home challenge submission. For production use, consider:
 1. Adding comprehensive unit tests
 2. Implementing proper error handling and retries
 3. Adding data quality checks and validation
-4. Creating Docker containers for deployment
+4. ✅ **Docker containers for deployment** (Completed!)
 5. Setting up CI/CD pipelines
 
 ## 📄 License

@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  apollo-dev:
+    build: 
+      context: ..
+      dockerfile: Dockerfile
+    container_name: apollo-dev-container
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/service-account-key.json
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - BIGQUERY_DATASET=${BIGQUERY_DATASET:-apollo_labels}
+      - BIGQUERY_LOCATION=${BIGQUERY_LOCATION:-US}
+      - MIN_ETH_BALANCE_WHALE=${MIN_ETH_BALANCE_WHALE:-1000.0}
+      - NFT_TRADER_THRESHOLD=${NFT_TRADER_THRESHOLD:-0.7}
+      - LOOKBACK_DAYS_NEW_WALLET=${LOOKBACK_DAYS_NEW_WALLET:-30}
+      - PYTHONPATH=/app
+    
+    volumes:
+      # Mount source code for live development
+      - ..:/app
+      - ../credentials:/app/credentials:ro
+      - ../output:/app/output
+      # Mount .env file
+      - ../.env:/app/.env:ro
+    
+    # Keep container running for development
+    stdin_open: true
+    tty: true
+    
+    # Override command to keep container running
+    command: sleep infinity
+    
+    # Restart policy
+    restart: unless-stopped
