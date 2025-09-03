@@ -26,9 +26,12 @@ The pipeline follows a modular, incremental design inspired by modern data engin
 ### Key Design Principles
 
 - **Transparency**: Each label has clear, rule-based logic
-- **Incremental**: Process only new blockchain data, append-only results
 - **Extensibility**: Adding new labels requires no changes to existing pipelines
 - **Scalability**: Built on BigQuery for handling massive datasets
+
+### Current Limitations (MVP)
+
+⚠️ **Note**: The current implementation processes all data from scratch on each run. For production use, this should be migrated to an incremental processing architecture with proper database storage and DBT models. See the [Incremental Processing Architecture](#-incremental-processing-architecture-future) section for the planned improvements.
 
 ## 🚀 Quick Start
 
@@ -52,8 +55,16 @@ The pipeline follows a modular, incremental design inspired by modern data engin
    ```
 
 3. **Configure Google Cloud**
+   
+   **Option A: Using .env file (Recommended)**
    ```bash
-   # Set up authentication
+   # Copy the template and edit with your values
+   cp .env.example .env
+   # Edit .env with your Google Cloud credentials
+   ```
+   
+   **Option B: Using environment variables**
+   ```bash
    export GOOGLE_APPLICATION_CREDENTIALS="path/to/your/service-account-key.json"
    export GOOGLE_CLOUD_PROJECT="your-project-id"
    ```
@@ -62,6 +73,8 @@ The pipeline follows a modular, incremental design inspired by modern data engin
    ```bash
    python main.py
    ```
+
+📖 **For detailed setup instructions, see [SETUP.md](SETUP.md)**
 
 ## 📊 Label Definitions
 
@@ -130,6 +143,74 @@ The pipeline generates CSV files with standardized schema:
 - **Cons**: Not optimized for large-scale data sharing
 - **Future**: Will migrate to Parquet + S3 for production
 
+## 🔄 Incremental Processing Architecture (Future)
+
+### Current State (MVP)
+The current implementation processes all data from scratch on each run, which is:
+- ✅ **Simple**: Easy to understand and debug
+- ✅ **Reliable**: No state management complexity
+- ❌ **Expensive**: Re-processes all historical data
+- ❌ **Slow**: Full table scans on every run
+
+### Planned Incremental Architecture
+
+#### Database Layer
+```sql
+-- State tracking table
+CREATE TABLE pipeline_state (
+    label_type VARCHAR(50),
+    last_processed_block BIGINT,
+    last_processed_timestamp TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
+);
+
+-- Incremental labels table
+CREATE TABLE address_labels (
+    address VARCHAR(42),
+    label VARCHAR(50),
+    confidence DECIMAL(5,4),
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP,
+    source_rule TEXT,
+    -- Partition by date for efficient queries
+    partition_date DATE GENERATED ALWAYS AS (DATE(created_at))
+) PARTITION BY partition_date;
+```
+
+#### DBT Models
+```sql
+-- models/incremental/whale_labels.sql
+{{ config(materialized='incremental') }}
+
+SELECT 
+    address,
+    'whale' as label,
+    LEAST(1.0, eth_balance / 10000.0) as confidence,
+    CURRENT_TIMESTAMP() as created_at,
+    CURRENT_TIMESTAMP() as updated_at,
+    'eth_balance >= 1000' as source_rule
+FROM {{ ref('ethereum_balances') }}
+WHERE eth_balance >= 1000.0
+{% if is_incremental() %}
+    AND block_timestamp > (SELECT MAX(last_processed_timestamp) 
+                          FROM {{ ref('pipeline_state') }} 
+                          WHERE label_type = 'whale')
+{% endif %}
+```
+
+#### Benefits of Incremental Processing
+- **Cost Reduction**: 90%+ reduction in BigQuery costs
+- **Speed**: Process only new data (minutes vs hours)
+- **Scalability**: Handle growing blockchain data efficiently
+- **Reliability**: Resume from last processed state on failures
+- **Freshness**: Near real-time label updates
+
+#### Implementation Strategy
+1. **Phase 1**: Add state tracking to current pipeline
+2. **Phase 2**: Migrate to database storage (PostgreSQL/BigQuery)
+3. **Phase 3**: Implement DBT models for incremental processing
+4. **Phase 4**: Add Airflow orchestration with proper scheduling
+
 ## 🚧 Future Improvements
 
 ### Phase 1: Enhanced Labeling
@@ -137,9 +218,12 @@ The pipeline generates CSV files with standardized schema:
 - [ ] Implement DeFi protocol user classification
 - [ ] Add cross-chain address resolution
 
-### Phase 2: Infrastructure
+### Phase 2: Infrastructure & Incremental Processing
+- [ ] **Database Integration**: Migrate to PostgreSQL/BigQuery as primary storage
+- [ ] **DBT Integration**: Implement DBT models for incremental label processing
+- [ ] **Incremental Processing**: Process only new blockchain data since last run
+- [ ] **State Management**: Track last processed block/timestamp for each label type
 - [ ] Migrate to Apache Airflow for orchestration
-- [ ] Implement incremental processing with delta tables
 - [ ] Add monitoring and alerting
 
 ### Phase 3: Scale & Performance

@@ -1,5 +1,3 @@
-"""BigQuery client for Apollo labeling pipeline."""
-
 import os
 from typing import List, Dict, Any, Optional
 from google.cloud import bigquery
@@ -11,10 +9,7 @@ from config import settings
 
 
 class BigQueryClient:
-    """BigQuery client wrapper for Apollo pipeline."""
-
     def __init__(self):
-        """Initialize BigQuery client."""
         self.client = bigquery.Client(
             project=settings.google_cloud_project,
             location=settings.bigquery_location
@@ -23,117 +18,185 @@ class BigQueryClient:
         self._ensure_dataset_exists()
 
     def _ensure_dataset_exists(self):
-        """Ensure the dataset exists."""
         try:
             self.client.get_dataset(self.dataset_id)
         except NotFound:
             dataset = bigquery.Dataset(self.dataset_id)
             dataset.location = settings.bigquery_location
             self.client.create_dataset(dataset, timeout=30)
-            print(f"Created dataset {self.dataset_id}")
 
     def execute_query(self, query: str) -> pd.DataFrame:
-        """Execute a BigQuery SQL query and return results as DataFrame."""
         try:
             query_job = self.client.query(query)
             return query_job.to_dataframe()
         except Exception as e:
-            print(f"Error executing query: {e}")
             raise
 
-    def get_ethereum_balances(self, min_balance: float = 1000.0) -> pd.DataFrame:
-        """Get Ethereum addresses with balances above threshold."""
-        query = f"""
-        SELECT 
-            address,
-            eth_balance,
-            CURRENT_TIMESTAMP() as created_at,
-            CURRENT_TIMESTAMP() as updated_at
-        FROM (
-            SELECT 
-                address,
-                SUM(value) / 1e18 as eth_balance
-            FROM `bigquery-public-data.crypto_ethereum.balances`
-            WHERE block_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
-            GROUP BY address
-            HAVING eth_balance >= {min_balance}
-        )
-        ORDER BY eth_balance DESC
+    def execute_query_with_params(self, query: str, params: Dict[str, Any]) -> pd.DataFrame:
+        """Execute a parameterized BigQuery SQL query.
+
+        Args:
+            query: SQL query string with parameter placeholders
+            params: Dictionary of parameter values
+
+        Returns:
+            pd.DataFrame: Query results as DataFrame
         """
-        return self.execute_query(query)
+        try:
+            job_config = bigquery.QueryJobConfig()
+            job_config.query_parameters = [
+                bigquery.ScalarQueryParameter(key, "STRING", str(value))
+                for key, value in params.items()
+            ]
 
-    def get_nft_traders(self, threshold: float = 0.7) -> pd.DataFrame:
-        """Get addresses with high percentage of ERC-721 interactions."""
-        query = f"""
-        WITH address_interactions AS (
-            SELECT 
-                from_address as address,
-                COUNT(*) as total_interactions,
-                SUM(CASE WHEN token_standard = 'ERC-721' THEN 1 ELSE 0 END) as nft_interactions
-            FROM `bigquery-public-data.crypto_ethereum.token_transfers`
-            WHERE block_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
-            GROUP BY from_address
-            HAVING total_interactions >= 10  -- Minimum activity threshold
-        )
-        SELECT 
-            address,
-            nft_interactions / total_interactions as nft_ratio,
-            total_interactions,
-            nft_interactions,
-            CURRENT_TIMESTAMP() as created_at,
-            CURRENT_TIMESTAMP() as updated_at
-        FROM address_interactions
-        WHERE nft_interactions / total_interactions >= {threshold}
-        ORDER BY nft_ratio DESC
+            query_job = self.client.query(query, job_config=job_config)
+            return query_job.to_dataframe()
+        except Exception as e:
+
+            raise
+
+    def get_table_schema(self, table_name: str) -> List[Dict[str, Any]]:
+        """Get schema information for a BigQuery table.
+
+        Args:
+            table_name: Name of the table (e.g., 'crypto_ethereum.balances')
+
+        Returns:
+            List[Dict[str, Any]]: Table schema information
         """
-        return self.execute_query(query)
+        try:
+            table_ref = self.client.get_table(
+                f"bigquery-public-data.{table_name}")
+            schema = []
+            for field in table_ref.schema:
+                schema.append({
+                    'name': field.name,
+                    'type': field.field_type,
+                    'mode': field.mode,
+                    'description': field.description
+                })
+            return schema
+        except Exception as e:
 
-    def get_dex_users(self) -> pd.DataFrame:
-        """Get addresses that have interacted with known DEX router contracts."""
-        # Known DEX router contracts (simplified list)
-        dex_contracts = [
-            "0x7a250d5630b4cf539739df2c5dacb4c659f2488d",  # Uniswap V2 Router
-            "0xe592427a0aece92de3edee1f18e0157c05861564",  # Uniswap V3 Router
-            "0x1b02da8cb0d097eb8d57a175b88c7d8b47997506",  # SushiSwap Router
-            "0xd9e1ce17f2641f24ae83637ab66a2cca9c378b9f",  # SushiSwap Router V2
-            "0x1111111254fb6c44bac0bed2854e76f90643097d",  # 1inch V4 Router
-        ]
+            return []
 
-        contracts_str = "', '".join(dex_contracts)
+    def get_table_info(self, table_name: str) -> Dict[str, Any]:
+        """Get basic information about a BigQuery table.
 
-        query = f"""
-        SELECT DISTINCT
-            from_address as address,
-            COUNT(DISTINCT to_address) as unique_dex_contracts,
-            COUNT(*) as total_dex_interactions,
-            CURRENT_TIMESTAMP() as created_at,
-            CURRENT_TIMESTAMP() as updated_at
-        FROM `bigquery-public-data.crypto_ethereum.transactions`
-        WHERE block_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
-        AND to_address IN ('{contracts_str}')
-        GROUP BY from_address
-        HAVING total_dex_interactions >= 5  -- Minimum DEX activity
-        ORDER BY total_dex_interactions DESC
+        Args:
+            table_name: Name of the table
+
+        Returns:
+            Dict[str, Any]: Table information
         """
-        return self.execute_query(query)
+        try:
+            table_ref = self.client.get_table(
+                f"bigquery-public-data.{table_name}")
+            return {
+                'table_id': table_ref.table_id,
+                'num_rows': table_ref.num_rows,
+                'num_bytes': table_ref.num_bytes,
+                'created': table_ref.created,
+                'modified': table_ref.modified,
+                'description': table_ref.description
+            }
+        except Exception as e:
 
-    def get_new_wallets(self, days: int = 30) -> pd.DataFrame:
-        """Get addresses with first transaction within specified days."""
-        query = f"""
-        WITH first_transactions AS (
-            SELECT 
-                from_address as address,
-                MIN(block_timestamp) as first_transaction_time
-            FROM `bigquery-public-data.crypto_ethereum.transactions`
-            GROUP BY from_address
-        )
-        SELECT 
-            address,
-            first_transaction_time,
-            CURRENT_TIMESTAMP() as created_at,
-            CURRENT_TIMESTAMP() as updated_at
-        FROM first_transactions
-        WHERE first_transaction_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
-        ORDER BY first_transaction_time DESC
+            return {}
+
+    def estimate_query_cost(self, query: str) -> Dict[str, Any]:
+        """Estimate the cost of a BigQuery query.
+
+        Args:
+            query: SQL query string
+
+        Returns:
+            Dict[str, Any]: Cost estimation information
         """
-        return self.execute_query(query)
+        try:
+            # Create a dry run job to estimate cost
+            job_config = bigquery.QueryJobConfig(
+                dry_run=True, use_query_cache=False)
+            query_job = self.client.query(query, job_config=job_config)
+
+            return {
+                'total_bytes_processed': query_job.total_bytes_processed,
+                # Rough estimate
+                'estimated_cost_usd': query_job.total_bytes_processed / (1024**4) * 5,
+                'cache_hit': query_job.cache_hit,
+                'dry_run': True
+            }
+        except Exception as e:
+
+            return {}
+
+    def get_available_tables(self, dataset: str = "crypto_ethereum") -> List[str]:
+        """Get list of available tables in a dataset.
+
+        Args:
+            dataset: Dataset name to query
+
+        Returns:
+            List[str]: List of table names
+        """
+        try:
+            dataset_ref = self.client.dataset(
+                dataset, project="bigquery-public-data")
+            tables = list(self.client.list_tables(dataset_ref))
+            return [table.table_id for table in tables]
+        except Exception as e:
+
+            return []
+
+    def validate_query(self, query: str) -> Dict[str, Any]:
+        """Validate a BigQuery query without executing it.
+
+        Args:
+            query: SQL query string to validate
+
+        Returns:
+            Dict[str, Any]: Validation results
+        """
+        try:
+            job_config = bigquery.QueryJobConfig(dry_run=True)
+            query_job = self.client.query(query, job_config=job_config)
+
+            return {
+                'valid': True,
+                'total_bytes_processed': query_job.total_bytes_processed,
+                'cache_hit': query_job.cache_hit,
+                'errors': []
+            }
+        except Exception as e:
+            return {
+                'valid': False,
+                'total_bytes_processed': 0,
+                'cache_hit': False,
+                'errors': [str(e)]
+            }
+
+    def get_query_job_info(self, job_id: str) -> Dict[str, Any]:
+        """Get information about a specific query job.
+
+        Args:
+            job_id: BigQuery job ID
+
+        Returns:
+            Dict[str, Any]: Job information
+        """
+        try:
+            job = self.client.get_job(job_id)
+            return {
+                'job_id': job.job_id,
+                'state': job.state,
+                'created': job.created,
+                'started': job.started,
+                'ended': job.ended,
+                'total_bytes_processed': job.total_bytes_processed,
+                'total_bytes_billed': job.total_bytes_billed,
+                'cache_hit': job.cache_hit,
+                'errors': [str(error) for error in job.errors] if job.errors else []
+            }
+        except Exception as e:
+
+            return {}
