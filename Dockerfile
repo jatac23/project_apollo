@@ -37,5 +37,5 @@ USER apollo
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import sys; sys.path.append('/app'); from config import settings; print('Health check passed')" || exit 1
 
-# Default command
-CMD ["python", "main.py"]
+# Default command - use keep-alive script to prevent automatic execution
+CMD ["python", "keep_alive.py"]

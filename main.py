@@ -1,16 +1,17 @@
-from config import settings
-from src.labeling_pipeline import LabelingPipeline
+import logging
 import os
 import sys
-import pandas as pd
 from datetime import datetime
-import logging
 
-sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+import pandas as pd
+
+from config import settings
+from src.labeling_pipeline import LabelingPipeline
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ def generate_summary_report(labels_df: pd.DataFrame) -> None:
     logger.info(f"Total labels generated: {len(labels_df)}")
     logger.info(f"Unique addresses: {labels_df['address'].nunique()}")
 
-    label_counts = labels_df['label'].value_counts()
+    label_counts = labels_df["label"].value_counts()
     logger.info("\nLabel type breakdown:")
     for label_type, count in label_counts.items():
         logger.info(f"  {label_type}: {count}")
@@ -49,18 +50,16 @@ def generate_summary_report(labels_df: pd.DataFrame) -> None:
     logger.info(f"  Min confidence: {labels_df['confidence'].min():.3f}")
     logger.info(f"  Max confidence: {labels_df['confidence'].max():.3f}")
 
-    high_confidence = labels_df[labels_df['confidence'] >= 0.8]
+    high_confidence = labels_df[labels_df["confidence"] >= 0.8]
     logger.info(f"\nHigh confidence labels (>= 0.8): {len(high_confidence)}")
 
-    address_label_counts = labels_df['address'].value_counts()
+    address_label_counts = labels_df["address"].value_counts()
     multi_label_addresses = address_label_counts[address_label_counts > 1]
     if not multi_label_addresses.empty:
-        logger.info(
-            f"\nAddresses with multiple labels: {len(multi_label_addresses)}")
+        logger.info(f"\nAddresses with multiple labels: {len(multi_label_addresses)}")
         logger.info("Top multi-label addresses:")
         for address, count in multi_label_addresses.head(5).items():
-            labels = labels_df[labels_df['address']
-                               == address]['label'].tolist()
+            labels = labels_df[labels_df["address"] == address]["label"].tolist()
             logger.info(f"  {address}: {labels}")
 
 
@@ -73,21 +72,22 @@ def main():
 
         if not labels:
             logger.warning(
-                "No labels were generated. Check your BigQuery configuration and data access.")
+                "No labels were generated. Check your BigQuery configuration and data access."
+            )
             return
 
         labels_df = pipeline.export_to_dataframe()
         generate_summary_report(labels_df)
         output_file = export_to_csv(labels_df)
 
-        logger.info(
-            f"Pipeline completed successfully. Results saved to: {output_file}")
+        logger.info(f"Pipeline completed successfully. Results saved to: {output_file}")
 
         logger.info("\nSample results:")
         sample_df = labels_df.head(10)
         for _, row in sample_df.iterrows():
             logger.info(
-                f"  {row['address'][:10]}... | {row['label']} | {row['confidence']:.3f}")
+                f"  {row['address'][:10]}... | {row['label']} | {row['confidence']:.3f}"
+            )
 
     except Exception as e:
         logger.error(f"Pipeline failed with error: {e}")
@@ -95,4 +95,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Prevent automatic execution - only run when explicitly called
+    import sys
+
+    if len(sys.argv) > 1 and sys.argv[1] == "--run":
+        main()
+    else:
+        print("Apollo labeling pipeline is ready.")
+        print("To run the pipeline, execute: python main.py --run")
+        print("Exiting to prevent automatic execution...")
+        sys.exit(0)
